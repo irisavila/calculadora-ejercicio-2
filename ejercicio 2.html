@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Precios con Guardado Local 💾</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f8f9fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .calculator-container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.5s ease-in-out;
+            width: 80%;
+            max-width: 600px;
+        }
+        .form-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .form-control {
+            margin-bottom: 15px;
+        }
+        #result-container {
+            margin-top: 20px;
+            display: none;
+        }
+        #results-table-container {
+            overflow-x: auto; /* Para tablas más anchas en pantallas pequeñas */
+        }
+        #results-table {
+            width: 100%;
+            margin-top: 15px;
+            border-collapse: collapse;
+        }
+        #results-table th, #results-table td {
+            border: 1px solid #ced4da;
+            padding: 8px;
+            text-align: left;
+            white-space: nowrap; /* Evita el salto de línea en celdas */
+        }
+        #results-table th {
+            background-color: #e9ecef;
+            font-weight: bold;
+        }
+        .button-container {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap; /* Permite que los botones pasen a la siguiente línea en pantallas pequeñas */
+        }
+        .export-button, .clear-button, .save-button, .load-button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .export-excel {
+            background-color: #28a745;
+            color: white;
+        }
+        .export-pdf {
+            background-color: #dc3545;
+            color: white;
+        }
+        .clear-button {
+            background-color: #f8f9fa;
+            color: #343a40;
+            border: 1px solid #ced4da;
+        }
+        .save-button {
+            background-color: #007bff;
+            color: white;
+        }
+        .load-button {
+            background-color: #6c757d;
+            color: white;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator-container animate__animated animate__fadeIn">
+        <h2 class="mb-4 text-center">Calculadora de Precios 💾</h2>
+        <form id="price-calculator">
+            <div class="mb-3">
+                <label for="concepto" class="form-label">Concepto del Producto:</label>
+                <input type="text" class="form-control" id="concepto" placeholder="Ingrese el nombre del producto" required>
+            </div>
+            <div class="mb-3">
+                <label for="costoBase" class="form-label">Costo Base del Producto (€):</label>
+                <input type="number" class="form-control" id="costoBase" placeholder="Ingrese el costo" required>
+            </div>
+            <div class="mb-3">
+                <label for="margenGanancia" class="form-label">Margen de Ganancia Deseado (%):</label>
+                <input type="number" class="form-control" id="margenGanancia" placeholder="Ingrese el porcentaje" required>
+            </div>
+            <button type="button" class="btn btn-primary w-100" onclick="agregarCalculo()">Agregar a Tabla</button>
+        </form>
+
+        <div id="result-container" class="mt-4 animate__animated" style="display: none;">
+            <h3>Cálculos Guardados</h3>
+            <div id="results-table-container">
+                <table id="results-table" class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Concepto</th>
+                            <th>Costo Base (€)</th>
+                            <th>Margen de Ganancia (%)</th>
+                            <th>Precio Sugerido (€)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-table-body">
+                        </tbody>
+                </table>
+            </div>
+            <div class="button-container">
+                <button type="button" class="clear-button" onclick="limpiarTabla()">Limpiar Tabla</button>
+                <button type="button" class="save-button" onclick="guardarLocal()">Guardar Localmente</button>
+                <button type="button" class="load-button" onclick="cargarLocal()">Cargar Guardado</button>
+                <button type="button" class="export-button export-excel" onclick="exportToExcel()">Exportar a Excel</button>
+                <button type="button" class="export-button export-pdf" onclick="exportToPDF()">Exportar a PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.7.1/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const resultsTableBody = document.getElementById('results-table-body');
+        const resultContainer = document.getElementById('result-container');
+        const localStorageKey = 'calculadoraPreciosGuardados';
+
+        // Cargar datos guardados al cargar la página
+        cargarLocal();
+
+        function agregarCalculo() {
+            const conceptoInput = document.getElementById('concepto');
+            const costoBaseInput = document.getElementById('costoBase');
+            const margenGananciaInput = document.getElementById('margenGanancia');
+
+            const concepto = conceptoInput.value;
+            const costoBase = parseFloat(costoBaseInput.value);
+            const margenGananciaPorcentaje = parseFloat(margenGananciaInput.value);
+
+            if (isNaN(costoBase) || isNaN(margenGananciaPorcentaje) || !concepto) {
+                alert("Por favor, ingrese valores válidos para todos los campos.");
+                return;
+            }
+
+            const margenDecimal = margenGananciaPorcentaje / 100;
+            const precioSugerido = costoBase / (1 - margenDecimal);
+
+            const newRow = resultsTableBody.insertRow();
+            const conceptoCell = newRow.insertCell();
+            const costoCell = newRow.insertCell();
+            const margenCell = newRow.insertCell();
+            const precioCell = newRow.insertCell();
+
+            conceptoCell.textContent = concepto;
+            costoCell.textContent = costoBase.toFixed(2);
+            margenCell.textContent = margenGananciaPorcentaje.toFixed(2);
+            precioCell.textContent = precioSugerido.toFixed(2);
+
+            resultContainer.style.display = 'block';
+            resultContainer.classList.add('animate__fadeInUp');
+
+            setTimeout(() => {
+                resultContainer.classList.remove('animate__fadeInUp');
+            }, 500);
+
+            // Limpiar el formulario después de agregar a la tabla
+            document.getElementById('price-calculator').reset();
+        }
+
+        function limpiarTabla() {
+            resultsTableBody.innerHTML = '';
+            // Ocultar el contenedor si la tabla está vacía
+            if (resultsTableBody.rows.length === 0) {
+                resultContainer.style.display = 'none';
+            }
+        }
+
+        function guardarLocal() {
+            const data = [];
+            for (let i = 0; i < resultsTableBody.rows.length; i++) {
+                const row = resultsTableBody.rows[i];
+                data.push({
+                    concepto: row.cells[0].textContent,
+                    costo: row.cells[1].textContent,
+                    margen: row.cells[2].textContent,
+                    precio: row.cells[3].textContent
+                });
+            }
+            localStorage.setItem(localStorageKey, JSON.stringify(data));
+            alert('Datos guardados localmente.');
+        }
+
+        function cargarLocal() {
+            const savedData = localStorage.getItem(localStorageKey);
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                limpiarTabla(); // Limpiar la tabla antes de cargar
+                data.forEach(item => {
+                    const newRow = resultsTableBody.insertRow();
+                    const conceptoCell = newRow.insertCell();
+                    const costoCell = newRow.insertCell();
+                    const margenCell = newRow.insertCell();
+                    const precioCell = newRow.insertCell();
+
+                    conceptoCell.textContent = item.concepto;
+                    costoCell.textContent = item.costo;
+                    margenCell.textContent = item.margen;
+                    precioCell.textContent = item.precio;
+                });
+                if (data.length > 0) {
+                    resultContainer.style.display = 'block';
+                }
+            }
+        }
+
+        function exportToExcel() {
+            const data = [
+                ["Concepto", "Costo Base (€)", "Margen de Ganancia (%)", "Precio Sugerido (€)"]
+            ];
+            for (let i = 0; i < resultsTableBody.rows.length; i++) {
+                const row = resultsTableBody.rows[i];
+                data.push([
+                    row.cells[0].textContent,
+                    row.cells[1].textContent,
+                    row.cells[2].textContent,
+                    row.cells[3].textContent
+                ]);
+            }
+
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.aoa_to_sheet(data);
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Cálculos de Precio");
+            XLSX.writeFile(workbook, "calculos_precio.xlsx");
+        }
+
+        function exportToPDF() {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            const head = [['Concepto', 'Costo Base (€)', 'Margen de Ganancia (%)', 'Precio Sugerido (€)']];
+            const body = [];
+            for (let i = 0; i < resultsTableBody.rows.length; i++) {
+                const row = resultsTableBody.rows[i];
+                body.push([
+                    row.cells[0].textContent,
+                    row.cells[1].textContent,
+                    row.cells[2].textContent,
+                    row.cells[3].textContent
+                ]);
+            }
+
+            pdf.autoTable({ head: head, body: body });
+            pdf.save('calculos_precio.pdf');
+        }
+    </script>
+</body>
+</html>
